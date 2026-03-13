@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML 檔案合併工具 - 在線版</title>
+    <!-- 使用 Tailwind CSS CDN 進行快速佈局 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .drag-over {
+            border-color: #6366f1;
+            background-color: #f5f3ff;
+            transform: scale(1.01);
+        }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-100 p-4 md:p-8 font-sans text-slate-800">
+
+    <div id="app" class="max-w-4xl mx-auto space-y-6">
+        <!-- 標題區 -->
+        <div class="text-center space-y-2 mb-8">
+            <div class="inline-flex items-center justify-center p-3 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-200 mb-4">
+                <i data-lucide="file-code-2" class="w-8 h-8 text-white"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-slate-900">HTML 檔案合併工具</h1>
+            <p class="text-slate-500 max-w-xl mx-auto">
+                無需上傳伺服器，完全在瀏覽器本地完成。將多個 HTML 檔案合併為單一檔案，並保留內容順序。
+            </p>
+        </div>
+
+        <!-- 上傳區 -->
+        <div id="drop-zone" 
+             class="relative border-2 border-dashed border-slate-300 rounded-2xl p-10 transition-all duration-200 ease-in-out text-center cursor-pointer flex flex-col items-center justify-center min-h-[200px] bg-white hover:border-indigo-400 hover:bg-slate-50 shadow-sm">
+            <input type="file" id="file-input" multiple accept=".html,.htm" class="hidden">
+            <div class="p-4 rounded-full mb-4 bg-slate-100">
+                <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-400" id="upload-icon"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-slate-700 mb-1">點擊或拖曳 HTML 檔案至此</h3>
+            <p class="text-sm text-slate-500">支援 .html, .htm 格式</p>
+        </div>
+
+        <!-- 檔案列表與操作區 (預設隱藏) -->
+        <div id="file-list-container" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                    <i data-lucide="settings" class="w-5 h-5 text-indigo-500"></i>
+                    調整順序與設定
+                </h2>
+                <button id="clear-all" class="text-sm text-red-500 hover:text-red-700 font-medium transition-colors">清空全部</button>
+            </div>
+            
+            <ul id="file-list" class="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+                <!-- 動態插入檔案項目 -->
+            </ul>
+
+            <div class="p-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row gap-4 justify-between items-center">
+                <button id="add-more" class="flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors w-full sm:w-auto justify-center">
+                    <i data-lucide="file-plus" class="w-4 h-4"></i>加入更多
+                </button>
+
+                <div id="action-buttons" class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <button id="merge-btn" class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm transition-all">
+                        開始合併
+                    </button>
+                    <!-- 合併後顯示 -->
+                    <div id="download-group" class="hidden flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <div class="flex items-center bg-white border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500">
+                            <input type="text" id="filename-input" value="merged_document" class="px-3 py-2 text-sm text-slate-700 w-full sm:w-40 focus:outline-none">
+                            <span class="px-2 py-2 text-xs text-slate-400 bg-slate-50 border-l">.html</span>
+                        </div>
+                        <button id="download-btn" class="flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg shadow-sm transition-all">
+                            <i data-lucide="download" class="w-5 h-5"></i>下載
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let filesData = [];
+        let mergedContent = null;
+
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const listContainer = document.getElementById('file-list-container');
+        const mergeBtn = document.getElementById('merge-btn');
+        const downloadGroup = document.getElementById('download-group');
+        const filenameInput = document.getElementById('filename-input');
+
+        // 初始化圖示
+        lucide.createIcons();
+
+        // 事件監聽
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => handleFiles(e.target.files);
+        
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        };
+
+        async function handleFiles(files) {
+            const htmlFiles = Array.from(files).filter(f => f.name.endsWith('.html') || f.name.endsWith('.htm'));
+            for (let file of htmlFiles) {
+                const text = await file.text();
+                filesData.push({
+                    id: Math.random().toString(36).substr(2, 9),
+                    name: file.name,
+                    content: text,
+                    size: (file.size / 1024).toFixed(1) + ' KB'
+                });
+            }
+            resetUI();
+            renderList();
+        }
+
+        function renderList() {
+            fileList.innerHTML = '';
+            if (filesData.length > 0) {
+                listContainer.classList.remove('hidden');
+            } else {
+                listContainer.classList.add('hidden');
+            }
+
+            filesData.forEach((file, index) => {
+                const li = document.createElement('li');
+                li.className = 'p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors group';
+                li.innerHTML = `
+                    <div class="flex flex-col gap-1">
+                        <button onclick="move(${index}, -1)" class="p-1 text-slate-400 hover:text-indigo-600 ${index === 0 ? 'opacity-20 cursor-not-allowed' : ''}"><i data-lucide="arrow-up" class="w-4 h-4"></i></button>
+                        <button onclick="move(${index}, 1)" class="p-1 text-slate-400 hover:text-indigo-600 ${index === filesData.length - 1 ? 'opacity-20 cursor-not-allowed' : ''}"><i data-lucide="arrow-down" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-medium text-slate-800 truncate">${file.name}</p>
+                        <p class="text-xs text-slate-500">${file.size}</p>
+                    </div>
+                    <button onclick="removeFile('${file.id}')" class="p-2 text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                `;
+                fileList.appendChild(li);
+            });
+            lucide.createIcons();
+        }
+
+        window.move = (index, direction) => {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= filesData.length) return;
+            const temp = filesData[index];
+            filesData[index] = filesData[newIndex];
+            filesData[newIndex] = temp;
+            resetUI();
+            renderList();
+        };
+
+        window.removeFile = (id) => {
+            filesData = filesData.filter(f => f.id !== id);
+            resetUI();
+            renderList();
+        };
+
+        document.getElementById('clear-all').onclick = () => {
+            filesData = [];
+            resetUI();
+            renderList();
+        };
+
+        document.getElementById('add-more').onclick = () => fileInput.click();
+
+        function resetUI() {
+            mergedContent = null;
+            mergeBtn.classList.remove('hidden');
+            downloadGroup.classList.add('hidden');
+        }
+
+        mergeBtn.onclick = () => {
+            if (filesData.length === 0) return;
+            
+            let combinedHead = new Set();
+            let combinedBody = '';
+            const parser = new DOMParser();
+
+            filesData.forEach((file, idx) => {
+                const doc = parser.parseFromString(file.content, 'text/html');
+                const headEls = doc.querySelectorAll('head style, head link[rel="stylesheet"], head script:not([src=""])');
+                headEls.forEach(el => combinedHead.add(el.outerHTML));
+                
+                combinedBody += `\n<!-- Start: ${file.name} -->\n<div class="merged-section">${doc.body.innerHTML}</div>\n<!-- End: ${file.name} -->\n`;
+            });
+
+            mergedContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Merged</title>${Array.from(combinedHead).join('\n')}<style>.merged-section{margin-bottom:20px;}</style></head><body>${combinedBody}</body></html>`;
+            
+            mergeBtn.classList.add('hidden');
+            downloadGroup.classList.remove('hidden');
+        };
+
+        document.getElementById('download-btn').onclick = () => {
+            const blob = new Blob([mergedContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const name = filenameInput.value.trim() || 'merged';
+            a.href = url;
+            a.download = name.endsWith('.html') ? name : name + '.html';
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+    </script>
+</body>
+</html>
