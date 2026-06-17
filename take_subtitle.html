@@ -2311,6 +2311,7 @@ const App = () => {
     // Remove [HH:MM:SS] prefix and the indent spaces that follow
     return text.replace(/^\[(\d{2}:\d{2}:\d{2})\] ?/gm, '').replace(/^          /gm, '');
   };
+  const fetchWithRetry = async targetUrl => {
     try {
       const directRes = await fetch(targetUrl);
       if (directRes.ok) return directRes;
