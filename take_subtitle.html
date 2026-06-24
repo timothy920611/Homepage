@@ -2470,14 +2470,38 @@ const App = () => {
         } = parseUrlInfo(url);
         if (!id) throw new Error('無法識別影片 ID');
         itemResult.id = id;
-        const apiUrl = `https://b.jw-cdn.org/apis/mediator/v1/media-items/${lang}/${id}?clientType=www`;
-        const resJSON = await fetchWithRetry(apiUrl);
-        const data = await resJSON.json();
-        const files = data.media?.[0]?.files || [];
-        itemResult.title = data.media?.[0]?.title || id;
-        const subFile = files.find(f => f.label === 'subtitles' || f.subtitles?.url);
-        if (!subFile) throw new Error('此影片無字幕檔');
-        const resVTT = await fetchWithRetry(subFile.subtitles?.url || subFile.url);
+
+        // 嘗試方法一：mediator API（適用 lank 或影片 docid）
+        let subtitleUrl = null;
+        let title = id;
+        try {
+          const apiUrl = `https://b.jw-cdn.org/apis/mediator/v1/media-items/${lang}/${id}?clientType=www`;
+          const resJSON = await fetchWithRetry(apiUrl);
+          const data = await resJSON.json();
+          const files = data.media?.[0]?.files || [];
+          title = data.media?.[0]?.title || id;
+          const subFile = files.find(f => f.label === 'subtitles' || f.subtitles?.url);
+          if (subFile) subtitleUrl = subFile.subtitles?.url || subFile.url;
+        } catch (e) {}
+
+        // 方法二：pub-media API（適用文章 docid，如 finder?docid=...）
+        if (!subtitleUrl && /^\d+$/.test(id)) {
+          const pubApiUrl = `https://b.jw-cdn.org/apis/pub-media/GETPUBMEDIALINKS?output=json&langwritten=${lang}&docid=${id}&alllangs=0&type=video`;
+          const resJSON = await fetchWithRetry(pubApiUrl);
+          const data = await resJSON.json();
+          const mediaItems = data.files?.[lang] || {};
+          const allFiles = Object.values(mediaItems).flat();
+          title = data.pubName || data.title || id;
+          const subFile = allFiles.find(f => f.subtitles?.url);
+          if (subFile) {
+            subtitleUrl = subFile.subtitles.url;
+            if (subFile.title) title = subFile.title;
+          }
+        }
+
+        itemResult.title = title;
+        if (!subtitleUrl) throw new Error('此影片無字幕檔');
+        const resVTT = await fetchWithRetry(subtitleUrl);
         itemResult.text = cleanVttText(await resVTT.text());
         itemResult.status = 'success';
         successCount++;
